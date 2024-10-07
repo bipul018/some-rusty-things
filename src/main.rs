@@ -1,15 +1,68 @@
 extern crate sdl2;
 extern crate glam;
-use glam::{Vec2, Mat3};
+use glam::{Vec2, Mat3, Vec3, Quat, Mat4};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 
+macro_rules! generate_sphere3d {
+    ($segments:expr, $radius:expr, $center:expr) => {{
+        //let mut pts: Vec<Vec3> = Vec::with_capacity(($segments + 1) * ($segments + 1));
+        //let mut inxs: Vec<u16> = Vec::with_capacity(6 * $segments * $segments);
+	let mut pts = [Vec3::ZERO;($segments + 1) * ($segments + 1)];
+	let mut inxs = [0 as u16; 6 * $segments * $segments];
+        // Generate points on the sphere surface
+	let mut pt_inx:usize = 0;
+	let mut inx_inx:usize = 0;
+        for lat in 0..=$segments {
+            let theta = lat as f32 * std::f32::consts::PI / $segments as f32; // Latitude
+            for lon in 0..=$segments {
+                let phi = lon as f32 * 2.0 * std::f32::consts::PI / $segments as f32; // Longitude
+                let x = $radius * f32::sin(theta) * f32::cos(phi) + $center.x;
+                let y = $radius * f32::sin(theta) * f32::sin(phi) + $center.y;
+                let z = $radius * f32::cos(theta) + $center.z;
+		pts[pt_inx]=Vec3::new(x, y, z);
+		pt_inx+=1;
+                //pts.push(Vec3::new(x, y, z));
+            }
+        }
+
+        // Generate indices for the triangles
+        for lat in 0..$segments {
+            for lon in 0..$segments {
+                let first = (lat * ($segments + 1)) + lon;
+                let second = first + $segments + 1;
+
+                // Two triangles per quad
+		inxs[inx_inx] = first as u16;
+		inx_inx+=1;
+		//inxs.push(first as u16);
+		inxs[inx_inx] = second as u16;
+		inx_inx+=1;
+		//inxs.push(second as u16);
+		inxs[inx_inx] = (first + 1) as u16;
+		inx_inx+=1;
+		//inxs.push((first + 1) as u16);
+                
+		inxs[inx_inx] = second as u16;
+		inx_inx+=1;
+		//inxs.push(second as u16);
+		inxs[inx_inx] = (second + 1) as u16;
+		inx_inx+=1;
+		//inxs.push((second + 1) as u16);
+		inxs[inx_inx] = (first + 1) as u16;
+		inx_inx+=1;
+		//inxs.push((first + 1) as u16);
+            }
+        }
+
+        (pts, inxs)
+    }};
+}
 
 
-
-macro_rules! generate_circle{
+macro_rules! generate_circle2d{
     ($segments:expr, $radius:expr, $center:expr) =>{{
 	let mut pts: [Vec2; $segments + 1] = [Vec2::ZERO; $segments + 1];
         let mut inxs: [u16; 3 * $segments] = [0; 3 * $segments];
@@ -36,6 +89,17 @@ macro_rules! generate_circle{
 
     }};
 }
+
+macro_rules! generate_circle3d{
+    ($segments:expr, $radius:expr, $center:expr) =>{{
+	let center_3d = $center;
+	let center_2d = center_3d.truncate();
+	let (pts2d, inxs) = generate_circle2d!($segments, $radius, center_2d);
+	let pts3d_array = pts2d.map(|pt2d|{Vec3::new(pt2d.x, pt2d.y, center_3d.z)});
+        (pts3d_array, inxs)
+    }};
+}
+
 
 
 pub fn main() {
@@ -65,7 +129,7 @@ pub fn main() {
 	//     and pass in raw SDL_window along with this video subsystem to create a window struct
 	//     just for kicks, trying out creating window not as member of video subsystem
 	let window = match sdl2::video::WindowBuilder
-	    ::new(&video_subsystem, "My Rust SDL2 Demo", 800, 600)
+	    ::new(&video_subsystem, "My Rust SDL2 Demo", 800, 450)
 	    .position_centered()
 	    .resizable()
 	    .build(){
@@ -113,12 +177,20 @@ pub fn main() {
     let mut ball_vel:Vec2 = Vec2::new(0.0, 0.0);
     let ball_acc:Vec2 = Vec2::new(0.0, 0.0);
 
-    let mut cam = Camera2D::new(Vec2::new(0.0,0.0), 0.0, 10.0);
-    
+    let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 10.0);
+    let mut cam3d = Camera3D::init(std::f32::consts::PI/3.0, 16.0/9.0, [0.0, 1.0]);
+    cam3d.transform = cam3d.transform
+	.translate(Vec3::new(0.0, 10.0, 0.0))
+	.scalef(10.0)
+	.rotatex(std::f32::consts::PI/2.0);
+
+    let mut model_trns = Transform3D::init();
+
+    let mut control_mode:u16 = 0;
     'main_loop: loop {
         for event in event_pump.poll_iter() {
 	    use Event::KeyDown;
-	 
+	    // For general events
             match event {
                 Event::Quit { .. }
                 | Event::KeyDown { keycode: Some(Keycode::Escape) | Some(Keycode::Backspace), .. }
@@ -126,20 +198,85 @@ pub fn main() {
 
 		//Remaining keydown matched together
 		KeyDown{keycode: Some(key), ..} =>{
-		    match key{
-			Keycode::Q => cam.rot -= 0.05,
-			Keycode::E => cam.rot += 0.05,
-			Keycode::W => cam.pos.y += 0.1,
-			Keycode::S => cam.pos.y -= 0.1,
-			Keycode::A => cam.pos.x += 0.1,
-			Keycode::D => cam.pos.x -= 0.1,
-			Keycode::Z => cam.view /= 1.01,
-			Keycode::C => cam.view *= 1.01,
+
+		    match control_mode{
+			// For 2D events
+			0 => match key{
+			    Keycode::Q => cam2d.rot -= 0.05,
+			    Keycode::E => cam2d.rot += 0.05,
+			    Keycode::W => cam2d.pos.y += 0.1,
+			    Keycode::S => cam2d.pos.y -= 0.1,
+			    Keycode::A => cam2d.pos.x += 0.1,
+			    Keycode::D => cam2d.pos.x -= 0.1,
+			    Keycode::Z => cam2d.view /= 1.01,
+			    Keycode::C => cam2d.view *= 1.01,
+
+			    Keycode::M => control_mode=1,
+			    _=>{}
+			},
+			// For 3D events
+			1 => {
+			    /*
+			    AD -> x move, WS -> y move, QE -> z move
+			    right/left ->x rotate, up/down->z rotate, pgup/pgdown-> y rotate
+			    ZC -> zoom in/out
+			     */
+			    match key{
+				Keycode::Q => cam3d.transform.pos.z -= 0.1,
+				Keycode::E => cam3d.transform.pos.z += 0.1,
+				Keycode::W => cam3d.transform.pos.y += 0.1,
+				Keycode::S => cam3d.transform.pos.y -= 0.1,
+				Keycode::A => cam3d.transform.pos.x += 0.1,
+				Keycode::D => cam3d.transform.pos.x -= 0.1,
+				Keycode::Z => cam3d.transform.scale /= 1.01,
+				Keycode::C => cam3d.transform.scale *= 1.01,
+				Keycode::Right => cam3d.transform=cam3d.transform.rotatex(0.05),
+				Keycode::Left => cam3d.transform=cam3d.transform.rotatex(-0.05),
+				Keycode::Up => cam3d.transform=cam3d.transform.rotatez(0.05),
+				Keycode::Down => cam3d.transform=cam3d.transform.rotatez(-0.05),
+				Keycode::PageUp => cam3d.transform=cam3d.transform.rotatey(0.05),
+				Keycode::PageDown => cam3d.transform=cam3d.transform.rotatey(-0.05),
+				Keycode::M => control_mode=2,
+				_=>{}
+			    }
+			},
+			// For 3D model event
+			2 => {
+			    /*
+			    AD -> x move, WS -> y move, QE -> z move
+			    right/left ->x rotate, up/down->z rotate, pgup/pgdown-> y rotate
+			    ZC -> zoom in/out
+			    model_trns
+			     */
+			    match key{
+				Keycode::Q => model_trns.pos.z -= 0.1,
+				Keycode::E => model_trns.pos.z += 0.1,
+				Keycode::W => model_trns.pos.y += 0.1,
+				Keycode::S => model_trns.pos.y -= 0.1,
+				Keycode::A => model_trns.pos.x += 0.1,
+				Keycode::D => model_trns.pos.x -= 0.1,
+				Keycode::Z => model_trns.scale /= 1.01,
+				Keycode::C => model_trns.scale *= 1.01,
+				Keycode::Right => model_trns=model_trns.rotatex(0.05),
+				Keycode::Left => model_trns=model_trns.rotatex(-0.05),
+				Keycode::Up => model_trns=model_trns.rotatez(0.05),
+				Keycode::Down => model_trns=model_trns.rotatez(-0.05),
+				Keycode::PageUp => model_trns=model_trns.rotatey(0.05),
+				Keycode::PageDown => model_trns=model_trns.rotatey(-0.05),
+
+				Keycode::M => control_mode=0,
+				_=>{}
+			    }
+			},
 			_=>{}
 		    }
+
+		    
 		},
                 _ => {}
             }
+
+	    
         }
 
 	ball_pos = ball_pos + ball_vel;
@@ -157,27 +294,60 @@ pub fn main() {
 	cnv.set_draw_color(bg_col);
         cnv.clear();
 
-	_=fill_circle(&cnv, cam.lookpt(&cnv, ball_pos), 30.0, Color::RGB(0,0,255));
-	_=fill_circle(&cnv, cam.lookpt(&cnv, ball2_pos), 30.0, Color::RGB(255,0,0));
+	_=fill_circle(&cnv, cam2d.lookpt(&cnv, ball_pos), 30.0, Color::RGB(0,0,255));
+	_=fill_circle(&cnv, cam2d.lookpt(&cnv, ball2_pos), 30.0, Color::RGB(255,0,0));
 
 	let pts: Vec<Vec2> = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]]
 	    .iter().map(|&v| Vec2::from_array(v)).collect();
 	let inxs: Vec<u16> = [0, 1, 2, 2, 3, 0].iter().map(|x| *x as u16).collect();
 
-	_=draw_triangles(&cnv, &cam, &pts, &inxs, Color::RGB(0,255,0), false);
-	_=draw_triangles(&cnv, &cam, &pts, &inxs, Color::RGB(0,0,0), true);
+	_=draw_triangles(&cnv, &cam2d, &pts, &inxs, Color::RGB(0,255,0), false);
+	_=draw_triangles(&cnv, &cam2d, &pts, &inxs, Color::RGB(0,0,0), true);
 	    
 			      
-	let (cir_pts, cir_inx) = generate_circle!(10, 1.2, Vec2::new(-3.0,0.0));
+	let (cir_pts, cir_inx) = generate_circle2d!(10, 1.2, Vec2::new(-3.0,0.0));
 	
-	_=draw_triangles(&cnv, &cam, &cir_pts, &cir_inx,
+	_=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
 			 Color::RGB(255,255,255), false);
-	_=draw_triangles(&cnv, &cam, &cir_pts, &cir_inx,
+	_=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
 			 Color::RGB(0,0,0), true);
+
+	//let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
+	let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(4.0,4.0,1.0));
+	let cam_proj = cam3d.mat();
+	let cir3d_proj = cir3d_pts.map(|pt3d|{
+	    cam_proj.project_point3(pt3d).truncate()
+	});
+	_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
+			 Color::RGB(255,255,0), false);
+	_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
+			 Color::RGB(0,0,0), true);
+
+
 	
         cnv.present();
 
 	
+    }
+}
+struct Camera3D{
+    transform: Transform3D,
+    fov_y_radians: f32,
+    aspect_ratio: f32,
+    z_near: f32,
+    z_far: f32,
+}
+
+#[allow(dead_code)]
+impl Camera3D{
+    fn init(fov_y_radians: f32, aspect_ratio: f32, z_range: [f32;2]) -> Self{
+	Self{transform:Transform3D::init(),
+	     fov_y_radians, aspect_ratio,
+	     z_near: z_range[0], z_far: z_range[1]}
+    }
+    fn mat(&self) -> Mat4{
+	Mat4::perspective_lh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
+	    * self.transform.mat().inverse()
     }
 }
 
@@ -185,7 +355,46 @@ pub fn main() {
 // Takes in model -> applies model trans -> camera + proj trans -> makes Vec2 arrays
 //       supplies it into 2D triangle drawing
 // Need to do backface culling in 2D triangle drawing part ?? (sad)
+struct Transform3D{
+    pos: Vec3,
+    rotq: Quat, //Need to rotate this by additional quats
+    scale: Vec3,
+}
 
+#[allow(dead_code)]
+impl Transform3D{
+    fn init() -> Self{
+	Self{pos:Vec3::ZERO,rotq:Quat::IDENTITY, scale:Vec3::ONE}
+    }
+    fn reset(self) -> Self{
+	Self::init()
+    }
+    fn translate(self, delta: Vec3)->Self{
+	Self{pos: self.pos + delta, ..self}
+    }
+    fn scalef(self, factor: f32)->Self{
+	Self{scale:self.scale*factor, ..self}
+    }
+    //Angles are in radians
+    fn rotatex(self, angle: f32)->Self{
+	let rotq = Quat::from_rotation_x(angle);
+	Self{rotq:self.rotq.mul_quat(rotq), ..self}
+    }
+    fn rotatey(self, angle: f32)->Self{
+	let rotq = Quat::from_rotation_y(angle);
+	Self{rotq:self.rotq.mul_quat(rotq), ..self}
+    }
+    fn rotatez(self, angle: f32)->Self{
+	let rotq = Quat::from_rotation_z(angle);
+	Self{rotq:self.rotq.mul_quat(rotq), ..self}
+    }
+    //Does translate * rotate * scale operation 
+    fn mat(&self)->Mat4{
+	Mat4::from_translation(self.pos) *
+	    Mat4::from_quat(self.rotq) *
+	    Mat4::from_scale(self.scale)
+    }
+}
 
 // Make a function that renders triangles from mesh according to a given camera
 fn draw_triangles<T:sdl2::render::RenderTarget>(canvas: &sdl2::render::Canvas<T>,
@@ -235,7 +444,7 @@ struct Camera2D{
 
 #[allow(dead_code)]
 impl Camera2D{
-    fn new(pos:Vec2, rot:f32, view:f32) -> Camera2D{
+    fn init(pos:Vec2, rot:f32, view:f32) -> Camera2D{
 	Camera2D{ pos, rot, view }
     }
     fn matrix<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>) -> Mat3 {
