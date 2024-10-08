@@ -101,7 +101,9 @@ macro_rules! generate_circle3d{
 }
 
 
-
+#[allow(unused_mut)]
+#[allow(unreachable_code)]
+#[allow(unused_variables)]
 pub fn main() {
     // Unlike the C version, you don't give in the submodules to initialize here
     // It is intialized when you access it later (I think)
@@ -177,17 +179,25 @@ pub fn main() {
     let mut ball_vel:Vec2 = Vec2::new(0.0, 0.0);
     let ball_acc:Vec2 = Vec2::new(0.0, 0.0);
 
-    let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 10.0);
-    let mut cam3d = Camera3D::init(std::f32::consts::PI/3.0, 16.0/9.0, [0.0, 1.0]);
-    cam3d.transform = cam3d.transform
-	.translate(Vec3::new(0.0, 10.0, 0.0))
-	.scalef(10.0)
-	.rotatex(std::f32::consts::PI/2.0);
+    let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 2.0);
+    let mut cam3d = Camera3D::init(std::f32::consts::PI/2.0, 9.0/9.0, [0.0, 20.0]);
+    // cam3d.transform = cam3d.transform
+    // 	.translate(Vec3::new(0.0, 10.0, 0.0))
+    // 	.scalef(10.0)
+    // 	.rotatex(std::f32::consts::PI/2.0);
+    cam3d.transform = Transform3D::from_mat4(
+	&Mat4::look_at_rh(Vec3::new(0.0, 20.0, 0.0),
+			 Vec3::new(0.0, 0.0, 0.0),
+			 Vec3::new(0.0, 0.0, 1.0)).inverse());
+
+
+
 
     let mut model_trns = Transform3D::init();
 
     let mut control_mode:u16 = 0;
     'main_loop: loop {
+	//break;
         for event in event_pump.poll_iter() {
 	    use Event::KeyDown;
 	    // For general events
@@ -313,23 +323,24 @@ pub fn main() {
 			 Color::RGB(0,0,0), true);
 
 	//let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
-	let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(4.0,4.0,1.0));
+	let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(0.0,0.0,0.0));
 	let cam_proj = cam3d.mat();
 	let cir3d_proj = cir3d_pts.map(|pt3d|{
-	    cam_proj.project_point3(pt3d).truncate()
+	    cam_proj.project_point3(model_trns.mat().transform_point3(pt3d)).truncate()
 	});
 	_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
 			 Color::RGB(255,255,0), false);
 	_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
 			 Color::RGB(0,0,0), true);
-
+	
 
 	
         cnv.present();
-
 	
+
     }
 }
+#[derive(Debug)]
 struct Camera3D{
     transform: Transform3D,
     fov_y_radians: f32,
@@ -346,7 +357,7 @@ impl Camera3D{
 	     z_near: z_range[0], z_far: z_range[1]}
     }
     fn mat(&self) -> Mat4{
-	Mat4::perspective_lh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
+	Mat4::perspective_rh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
 	    * self.transform.mat().inverse()
     }
 }
@@ -355,6 +366,7 @@ impl Camera3D{
 // Takes in model -> applies model trans -> camera + proj trans -> makes Vec2 arrays
 //       supplies it into 2D triangle drawing
 // Need to do backface culling in 2D triangle drawing part ?? (sad)
+#[derive(Debug)]
 struct Transform3D{
     pos: Vec3,
     rotq: Quat, //Need to rotate this by additional quats
@@ -368,6 +380,10 @@ impl Transform3D{
     }
     fn reset(self) -> Self{
 	Self::init()
+    }
+    fn from_mat4(affine_mat: &Mat4) -> Self{
+	let (s, r, t) = affine_mat.to_scale_rotation_translation();
+	Self{ pos: t, rotq: r, scale: s}
     }
     fn translate(self, delta: Vec3)->Self{
 	Self{pos: self.pos + delta, ..self}
