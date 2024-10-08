@@ -1,105 +1,18 @@
 extern crate sdl2;
 extern crate glam;
-use glam::{Vec2, Mat3, Vec3, Quat, Mat4};
+extern crate running_average;
+use glam::{Vec2, Vec3, Mat4};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 
-macro_rules! generate_sphere3d {
-    ($segments:expr, $radius:expr, $center:expr) => {{
-        //let mut pts: Vec<Vec3> = Vec::with_capacity(($segments + 1) * ($segments + 1));
-        //let mut inxs: Vec<u16> = Vec::with_capacity(6 * $segments * $segments);
-	let mut pts = [Vec3::ZERO;($segments + 1) * ($segments + 1)];
-	let mut inxs = [0 as u16; 6 * $segments * $segments];
-        // Generate points on the sphere surface
-	let mut pt_inx:usize = 0;
-	let mut inx_inx:usize = 0;
-        for lat in 0..=$segments {
-            let theta = lat as f32 * std::f32::consts::PI / $segments as f32; // Latitude
-            for lon in 0..=$segments {
-                let phi = lon as f32 * 2.0 * std::f32::consts::PI / $segments as f32; // Longitude
-                let x = $radius * f32::sin(theta) * f32::cos(phi) + $center.x;
-                let y = $radius * f32::sin(theta) * f32::sin(phi) + $center.y;
-                let z = $radius * f32::cos(theta) + $center.z;
-		pts[pt_inx]=Vec3::new(x, y, z);
-		pt_inx+=1;
-                //pts.push(Vec3::new(x, y, z));
-            }
-        }
+// Import the model generation macros
+mod generators;
 
-        // Generate indices for the triangles
-        for lat in 0..$segments {
-            for lon in 0..$segments {
-                let first = (lat * ($segments + 1)) + lon;
-                let second = first + $segments + 1;
-
-                // Two triangles per quad
-		inxs[inx_inx] = first as u16;
-		inx_inx+=1;
-		//inxs.push(first as u16);
-		inxs[inx_inx] = second as u16;
-		inx_inx+=1;
-		//inxs.push(second as u16);
-		inxs[inx_inx] = (first + 1) as u16;
-		inx_inx+=1;
-		//inxs.push((first + 1) as u16);
-                
-		inxs[inx_inx] = second as u16;
-		inx_inx+=1;
-		//inxs.push(second as u16);
-		inxs[inx_inx] = (second + 1) as u16;
-		inx_inx+=1;
-		//inxs.push((second + 1) as u16);
-		inxs[inx_inx] = (first + 1) as u16;
-		inx_inx+=1;
-		//inxs.push((first + 1) as u16);
-            }
-        }
-
-        (pts, inxs)
-    }};
-}
-
-
-macro_rules! generate_circle2d{
-    ($segments:expr, $radius:expr, $center:expr) =>{{
-	let mut pts: [Vec2; $segments + 1] = [Vec2::ZERO; $segments + 1];
-        let mut inxs: [u16; 3 * $segments] = [0; 3 * $segments];
-
-        pts[0] = $center;
-	use std::f32;
-        let step_angle = 2.0 * std::f32::consts::PI / ($segments as f32);
-        
-        for i in 1..=$segments {
-            let angle = step_angle * i as f32;
-            let x = f32::cos(angle) * $radius + $center.x;
-            let y = f32::sin(angle) * $radius + $center.y;
-            pts[i as usize] = Vec2::new(x, y);
-        }
-
-        // Populate the indices array
-        for i in 0..$segments {
-            inxs[(i * 3) as usize] = 0; // Center point index
-            inxs[(i * 3 + 1) as usize] = i + 1; // Current point index
-            inxs[(i * 3 + 2) as usize] = if i == $segments - 1 { 1 } else { i + 2 }; // Next point index
-        }
-
-        (pts, inxs)
-
-    }};
-}
-
-macro_rules! generate_circle3d{
-    ($segments:expr, $radius:expr, $center:expr) =>{{
-	let center_3d = $center;
-	let center_2d = center_3d.truncate();
-	let (pts2d, inxs) = generate_circle2d!($segments, $radius, center_2d);
-	let pts3d_array = pts2d.map(|pt2d|{Vec3::new(pt2d.x, pt2d.y, center_3d.z)});
-        (pts3d_array, inxs)
-    }};
-}
-
+// Import all the transformations things
+mod transformations;
+use transformations::*;
 
 #[allow(unused_mut)]
 #[allow(unreachable_code)]
@@ -179,7 +92,7 @@ pub fn main() {
     let mut ball_vel:Vec2 = Vec2::new(0.0, 0.0);
     let ball_acc:Vec2 = Vec2::new(0.0, 0.0);
 
-    let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 2.0);
+    let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 10.0);
     let mut cam3d = Camera3D::init(std::f32::consts::PI/2.0, 9.0/9.0, [0.0, 20.0]);
     // cam3d.transform = cam3d.transform
     // 	.translate(Vec3::new(0.0, 10.0, 0.0))
@@ -191,10 +104,14 @@ pub fn main() {
 			 Vec3::new(0.0, 0.0, 1.0)).inverse());
 
 
-
-
     let mut model_trns = Transform3D::init();
 
+    //Models used
+    //let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
+    let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(0.0,0.0,0.0));
+
+    let mut time_window = running_average::RealTimeRunningAverage::default();
+    
     let mut control_mode:u16 = 0;
     'main_loop: loop {
 	//break;
@@ -304,6 +221,9 @@ pub fn main() {
 	cnv.set_draw_color(bg_col);
         cnv.clear();
 
+	//Time draw
+	let now = std::time::Instant::now();
+	
 	_=fill_circle(&cnv, cam2d.lookpt(&cnv, ball_pos), 30.0, Color::RGB(0,0,255));
 	_=fill_circle(&cnv, cam2d.lookpt(&cnv, ball2_pos), 30.0, Color::RGB(255,0,0));
 
@@ -322,8 +242,6 @@ pub fn main() {
 	_=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
 			 Color::RGB(0,0,0), true);
 
-	//let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
-	let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(0.0,0.0,0.0));
 	let cam_proj = cam3d.mat();
 	let cir3d_proj = cir3d_pts.map(|pt3d|{
 	    cam_proj.project_point3(model_trns.mat().transform_point3(pt3d)).truncate()
@@ -334,82 +252,13 @@ pub fn main() {
 			 Color::RGB(0,0,0), true);
 	
 
+	let elapsed = now.elapsed();
+	time_window.insert(elapsed.as_millis() as f64);
 	
         cnv.present();
-	
+    }
 
-    }
-}
-#[derive(Debug)]
-struct Camera3D{
-    transform: Transform3D,
-    fov_y_radians: f32,
-    aspect_ratio: f32,
-    z_near: f32,
-    z_far: f32,
-}
-
-#[allow(dead_code)]
-impl Camera3D{
-    fn init(fov_y_radians: f32, aspect_ratio: f32, z_range: [f32;2]) -> Self{
-	Self{transform:Transform3D::init(),
-	     fov_y_radians, aspect_ratio,
-	     z_near: z_range[0], z_far: z_range[1]}
-    }
-    fn mat(&self) -> Mat4{
-	Mat4::perspective_rh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
-	    * self.transform.mat().inverse()
-    }
-}
-
-// A system for rendering
-// Takes in model -> applies model trans -> camera + proj trans -> makes Vec2 arrays
-//       supplies it into 2D triangle drawing
-// Need to do backface culling in 2D triangle drawing part ?? (sad)
-#[derive(Debug)]
-struct Transform3D{
-    pos: Vec3,
-    rotq: Quat, //Need to rotate this by additional quats
-    scale: Vec3,
-}
-
-#[allow(dead_code)]
-impl Transform3D{
-    fn init() -> Self{
-	Self{pos:Vec3::ZERO,rotq:Quat::IDENTITY, scale:Vec3::ONE}
-    }
-    fn reset(self) -> Self{
-	Self::init()
-    }
-    fn from_mat4(affine_mat: &Mat4) -> Self{
-	let (s, r, t) = affine_mat.to_scale_rotation_translation();
-	Self{ pos: t, rotq: r, scale: s}
-    }
-    fn translate(self, delta: Vec3)->Self{
-	Self{pos: self.pos + delta, ..self}
-    }
-    fn scalef(self, factor: f32)->Self{
-	Self{scale:self.scale*factor, ..self}
-    }
-    //Angles are in radians
-    fn rotatex(self, angle: f32)->Self{
-	let rotq = Quat::from_rotation_x(angle);
-	Self{rotq:self.rotq.mul_quat(rotq), ..self}
-    }
-    fn rotatey(self, angle: f32)->Self{
-	let rotq = Quat::from_rotation_y(angle);
-	Self{rotq:self.rotq.mul_quat(rotq), ..self}
-    }
-    fn rotatez(self, angle: f32)->Self{
-	let rotq = Quat::from_rotation_z(angle);
-	Self{rotq:self.rotq.mul_quat(rotq), ..self}
-    }
-    //Does translate * rotate * scale operation 
-    fn mat(&self)->Mat4{
-	Mat4::from_translation(self.pos) *
-	    Mat4::from_quat(self.rotq) *
-	    Mat4::from_scale(self.scale)
-    }
+    println!("The average time over past few frames is {}", time_window.measurement());
 }
 
 // Make a function that renders triangles from mesh according to a given camera
@@ -448,42 +297,4 @@ fn fill_circle<T:sdl2::render::RenderTarget>(canvas: &sdl2::render::Canvas<T>,
 					     center: Vec2, radius: f32,
 					     color: Color) -> Result<(), String>{
     canvas.filled_circle(center.x as i16, center.y as i16, radius as i16, color)
-}
-
-struct Camera2D{
-    pos: Vec2,   //Position in the world
-    rot: f32,    //Angle with x axis of world in radians
-    view: f32,  //Range along x (both front and back) upto which camera can see world
-    // Might have to add a preferred direction where we preserve view
-    // Maybe make it a vector, need to clip the vector line on window rect
-}
-
-#[allow(dead_code)]
-impl Camera2D{
-    fn init(pos:Vec2, rot:f32, view:f32) -> Camera2D{
-	Camera2D{ pos, rot, view }
-    }
-    fn matrix<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>) -> Mat3 {
-	// To make a camera/projection matrix, we need to
-	// translate to position
-	// rotate by reverse
-	// scale so view fits in screen
-
-	let trmat = Mat3::from_translation(-self.pos);
-	let romat = Mat3::from_angle(-self.rot);
-	let vprt = canvas.viewport();
-	// TODO:: need to find out if need to translate too on viewport not starting at 0,0
-	// need to map view to vprt.width
-	let scmat = Mat3::from_scale(Vec2::new(vprt.width() as f32/(self.view),
-					       vprt.width() as f32/(self.view)));
-	let tr2mat = Mat3::from_translation(Vec2::new(vprt.width() as f32 * 0.5,
-						      vprt.height() as f32 * 0.5));
-	return tr2mat * scmat * romat * trmat;
-    }
-    fn lookpt<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>, point:Vec2) -> Vec2{
-	self.matrix(canvas).transform_point2(point)
-    }
-    fn lookvec<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>, vector:Vec2) -> Vec2{
-	self.matrix(canvas).transform_vector2(vector)
-    }
 }

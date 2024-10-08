@@ -25,6 +25,7 @@ name = "getting-rusty"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "running-average",
  "sdl2",
 ]
 
@@ -45,6 +46,12 @@ name = "libc"
 version = "0.2.159"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "561d97a539a36e26a9a5fad1ea11a3039a67714694aaa379433e580854bc3dc5"
+
+[[package]]
+name = "running-average"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ca70d55297ff92004f0e417bbe0268f59fbabce1ebc234f67794f837fb366e5"
 
 [[package]]
 name = "sdl2"
