@@ -6,6 +6,8 @@ use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
+use sdl2::rect::Rect;
+use sdl2::rect::FRect;    
 
 // Import the model generation macros
 mod generators;
@@ -111,6 +113,31 @@ pub fn main() {
     let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(0.0,0.0,0.0));
 
     let mut time_window = running_average::RealTimeRunningAverage::default();
+
+    // Draw on a custom surface first
+    
+    // let surface = match sdl2::surface::Surface::new(100, 100,
+    // 						    sdl2::pixels::PixelFormatEnum::RGB24){
+    // 	Ok(ok) => ok,
+    // 	Err(err) => {
+    // 	    println!("Error occured in creating new surface : {}", err);
+    // 	    return;
+    // 	}
+    // };
+    let tex_crtr = cnv.texture_creator();
+    let tex_w = 100; let tex_h = 100;
+    let mut tex = match tex_crtr.create_texture_streaming(None,tex_w,tex_h){
+	Err(err) => {
+	    println!("Got a TextureValueError while trying to create a streaming texture as {:?}",
+		     err);
+	    return;
+	},
+	Ok(ok) => ok
+    };
+
+    let tex_qry = tex.query();
+    println!("Created a streaming texture as {:?}", tex_qry);
+    let mut tex_dst = FRect::new(0.0,0.0, tex_w as f32, tex_h as f32);
     
     let mut control_mode:u16 = 0;
     'main_loop: loop {
@@ -137,6 +164,10 @@ pub fn main() {
 			    Keycode::D => cam2d.pos.x -= 0.1,
 			    Keycode::Z => cam2d.view /= 1.01,
 			    Keycode::C => cam2d.view *= 1.01,
+			    Keycode::Right => tex_dst.x += 1.0,
+			    Keycode::Left => tex_dst.x -= 1.0,
+			    Keycode::Up => tex_dst.y -= 1.0,
+			    Keycode::Down => tex_dst.y += 1.0,
 
 			    Keycode::M => control_mode=1,
 			    _=>{}
@@ -217,6 +248,17 @@ pub fn main() {
 	    ball_pos.y = win_size.y - (ball_pos.y - win_size.y);
 	    ball_vel.y = -ball_vel.y;
 	}
+
+	
+	//Draw into texture
+	_=tex.with_lock(None, |data: &mut [u8], pitch: usize|{
+	    data.chunks_mut(4*10).for_each(|chk|{
+		for i in chk.iter_mut(){
+		    *i=255;
+		}
+		chk[4*9+0] = 0; chk[4*9+1] = 0; chk[4*9+2] = 0;
+	    });
+	});
 	
 	cnv.set_draw_color(bg_col);
         cnv.clear();
@@ -254,6 +296,12 @@ pub fn main() {
 
 	let elapsed = now.elapsed();
 	time_window.insert(elapsed.as_millis() as f64);
+
+	
+	_=cnv.copy_f(&tex, None, tex_dst);
+
+
+
 	
         cnv.present();
     }
