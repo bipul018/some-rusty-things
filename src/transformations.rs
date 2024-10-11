@@ -18,7 +18,7 @@ impl Camera3D{
     }
     pub fn mat(&self) -> Mat4{
 	Mat4::perspective_rh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
-	    * self.transform.mat().inverse()
+	    * (self.transform.mat().inverse())
     }
 }
 

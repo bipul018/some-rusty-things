@@ -6,13 +6,14 @@ macro_rules! generate_sphere3d {
         //let mut pts: Vec<Vec3> = Vec::with_capacity(($segments + 1) * ($segments + 1));
         //let mut inxs: Vec<u16> = Vec::with_capacity(6 * $segments * $segments);
 	let mut pts = [Vec3::ZERO;($segments + 1) * ($segments + 1)];
-	let mut inxs = [0 as u16; 6 * $segments * $segments];
+	let mut inxs = [0 as u16; 6 * ($segments * $segments - $segments)];
         // Generate points on the sphere surface
 	let mut pt_inx:usize = 0;
 	let mut inx_inx:usize = 0;
         for lat in 0..=$segments {
             let theta = lat as f32 * std::f32::consts::PI / $segments as f32; // Latitude
             for lon in 0..=$segments {
+		// TODO :: REMOVE SOME REDUNDANT ADDITIONS ON THE FIRST AND LAST LONGITUDE
                 let phi = lon as f32 * 2.0 * std::f32::consts::PI / $segments as f32; // Longitude
                 let x = $radius * f32::sin(theta) * f32::cos(phi) + $center.x;
                 let y = $radius * f32::sin(theta) * f32::sin(phi) + $center.y;
@@ -29,26 +30,29 @@ macro_rules! generate_sphere3d {
                 let first = (lat * ($segments + 1)) + lon;
                 let second = first + $segments + 1;
 
-                // Two triangles per quad
-		inxs[inx_inx] = first as u16;
-		inx_inx+=1;
-		//inxs.push(first as u16);
-		inxs[inx_inx] = second as u16;
-		inx_inx+=1;
-		//inxs.push(second as u16);
-		inxs[inx_inx] = (first + 1) as u16;
-		inx_inx+=1;
-		//inxs.push((first + 1) as u16);
-                
-		inxs[inx_inx] = second as u16;
-		inx_inx+=1;
-		//inxs.push(second as u16);
-		inxs[inx_inx] = (second + 1) as u16;
-		inx_inx+=1;
-		//inxs.push((second + 1) as u16);
-		inxs[inx_inx] = (first + 1) as u16;
-		inx_inx+=1;
-		//inxs.push((first + 1) as u16);
+		if lat != 0{
+                    // Two triangles per quad
+		    inxs[inx_inx] = first as u16;
+		    inx_inx+=1;
+		    //inxs.push(first as u16);
+		    inxs[inx_inx] = second as u16;
+		    inx_inx+=1;
+		    //inxs.push(second as u16);
+		    inxs[inx_inx] = (first + 1) as u16;
+		    inx_inx+=1;
+		    //inxs.push((first + 1) as u16);
+		}
+		if lat != ($segments-1){
+		    inxs[inx_inx] = second as u16;
+		    inx_inx+=1;
+		    //inxs.push(second as u16);
+		    inxs[inx_inx] = (second + 1) as u16;
+		    inx_inx+=1;
+		    //inxs.push((second + 1) as u16);
+		    inxs[inx_inx] = (first + 1) as u16;
+		    inx_inx+=1;
+		    //inxs.push((first + 1) as u16);
+		}
             }
         }
 

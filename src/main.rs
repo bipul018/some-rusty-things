@@ -1,11 +1,10 @@
 extern crate sdl2;
 extern crate glam;
-use glam::{Vec2, Vec3, Mat4};
+use glam::{Vec2, Vec3, Mat4, Vec4};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
 use sdl2::rect::FRect;    
 
 // Import the model generation macros
@@ -98,16 +97,15 @@ pub fn main() {
     let ball_acc:Vec2 = Vec2::new(0.0, 0.0);
 
     let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 10.0);
-    let mut cam3d = Camera3D::init(std::f32::consts::PI/2.0, 9.0/9.0, [0.0, 20.0]);
+    let mut cam3d = Camera3D::init(std::f32::consts::PI/3.0, 9.0/9.0, [0.0, 20.0]);
     // cam3d.transform = cam3d.transform
     // 	.translate(Vec3::new(0.0, 10.0, 0.0))
     // 	.scalef(10.0)
     // 	.rotatex(std::f32::consts::PI/2.0);
     cam3d.transform = Transform3D::from_mat4(
 	&Mat4::look_at_rh(Vec3::new(0.0, 20.0, 0.0),
-			 Vec3::new(0.0, 0.0, 0.0),
-			 Vec3::new(0.0, 0.0, 1.0)).inverse());
-
+			  Vec3::new(0.0, 0.0, 0.0),
+			  Vec3::new(0.0, 0.0, 1.0)).inverse());
 
     let mut model_trns = Transform3D::init();
 
@@ -125,8 +123,8 @@ pub fn main() {
     let mut all_rndr_time = MovAvg::init(0.0);
 
     let tex_crtr = cnv.texture_creator();
-    const tex_w:usize = 320; const tex_h:usize = 180;
-    let mut tex = match tex_crtr.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ABGR8888,tex_w as u32,tex_h as u32){
+    const TEX_W:usize = 320; const TEX_H:usize = 180;
+    let mut tex = match tex_crtr.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ABGR8888,TEX_W as u32,TEX_H as u32){
 	Err(err) => {
 	    println!("Got a TextureValueError while trying to create a streaming texture as {:?}",
 		     err);
@@ -137,9 +135,9 @@ pub fn main() {
 
     let tex_qry = tex.query();
     println!("Created a streaming texture as {:?}", tex_qry);
-    let mut tex_dst = FRect::new(0.0,0.0, tex_w as f32, tex_h as f32);
+    let mut tex_dst = FRect::new(0.0,0.0, TEX_W as f32, TEX_H as f32);
 
-    let mut tex_arr = [Color::RGBA(255,0,0,255);tex_w*tex_h];
+    let mut tex_arr = [Color::RGBA(255,0,0,255);TEX_W*TEX_H];
 
     let mut control_mode:u16 = 0;
     'main_loop: loop {
@@ -261,14 +259,14 @@ pub fn main() {
 	    let pix_rndr_timer = std::time::Instant::now();
 	    
 	    let mut tex_pixel = |x:usize,y:usize, pix:Option<Color>|{
-		let prev_pix = tex_arr[y*tex_w+x];
+		let prev_pix = tex_arr[y*TEX_W+x];
 		if let Some(p)=pix{
-		    tex_arr[y*tex_w+x] = p;
+		    tex_arr[y*TEX_W+x] = p;
 		}
 		prev_pix
 	    };
-	    for x in 0..tex_w{
-		for y in 0..tex_h{
+	    for x in 0..TEX_W{
+		for y in 0..TEX_H{
 		    _=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
 		}
 	    }
@@ -276,7 +274,7 @@ pub fn main() {
 	    //Draw into texture
 	    let transmuted:&[u8] = unsafe{ std::mem::transmute(&tex_arr[0..]) };
 	    _=tex.update(None, transmuted, 
-	 		 tex_w * std::mem::size_of::<Color>());
+	 		 TEX_W * std::mem::size_of::<Color>());
 
 	    pix_rndr_time.insert(pix_rndr_timer.elapsed().as_millis() as f64);
 	}
@@ -325,7 +323,7 @@ pub fn main() {
 	_=cnv.copy_f(&tex, None, tex_dst);
 
 	_=cnv.string(10,10,&format!("Pixel Rendering Time : {:.2}", pix_rndr_time.get()), Color::RGB(0,0,0));
-	_=cnv.string(10,20,&format!("SDL Rendering TIme : {:.2}", sdl_rndr_time.get()), Color::RGB(0,0,0));
+	_=cnv.string(10,20,&format!("SDL Rendering Time : {:.2}", sdl_rndr_time.get()), Color::RGB(0,0,0));
 	_=cnv.string(10,30,&format!("Overall Rendering Time : {:.2}",all_rndr_time.get()), Color::RGB(0,0,0));
 
         cnv.present();
