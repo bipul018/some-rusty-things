@@ -125,8 +125,8 @@ pub fn main() {
     // 	}
     // };
     let tex_crtr = cnv.texture_creator();
-    let tex_w = 100; let tex_h = 100;
-    let mut tex = match tex_crtr.create_texture_streaming(None,tex_w,tex_h){
+    const tex_w:usize = 320; const tex_h:usize = 180;
+    let mut tex = match tex_crtr.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ABGR8888,tex_w as u32,tex_h as u32){
 	Err(err) => {
 	    println!("Got a TextureValueError while trying to create a streaming texture as {:?}",
 		     err);
@@ -138,7 +138,9 @@ pub fn main() {
     let tex_qry = tex.query();
     println!("Created a streaming texture as {:?}", tex_qry);
     let mut tex_dst = FRect::new(0.0,0.0, tex_w as f32, tex_h as f32);
-    
+
+    let mut tex_arr = [Color::RGBA(255,0,0,255);tex_w*tex_h];
+
     let mut control_mode:u16 = 0;
     'main_loop: loop {
 	//break;
@@ -164,10 +166,10 @@ pub fn main() {
 			    Keycode::D => cam2d.pos.x -= 0.1,
 			    Keycode::Z => cam2d.view /= 1.01,
 			    Keycode::C => cam2d.view *= 1.01,
-			    Keycode::Right => tex_dst.x += 1.0,
-			    Keycode::Left => tex_dst.x -= 1.0,
-			    Keycode::Up => tex_dst.y -= 1.0,
-			    Keycode::Down => tex_dst.y += 1.0,
+			    Keycode::Right => tex_dst.x += 5.0,
+			    Keycode::Left => tex_dst.x -= 5.0,
+			    Keycode::Up => tex_dst.y -= 5.0,
+			    Keycode::Down => tex_dst.y += 5.0,
 
 			    Keycode::M => control_mode=1,
 			    _=>{}
@@ -250,15 +252,34 @@ pub fn main() {
 	}
 
 	
+
+	let mut tex_pixel = |x:usize,y:usize, pix:Option<Color>|{
+	    let prev_pix = tex_arr[y*tex_w+x];
+	    if let Some(p)=pix{
+		tex_arr[y*tex_w+x] = p;
+	    }
+	    prev_pix
+	};
+	for x in 0..tex_w{
+	    for y in 0..tex_h{
+		_=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
+	    }
+	}
+
 	//Draw into texture
-	_=tex.with_lock(None, |data: &mut [u8], pitch: usize|{
-	    data.chunks_mut(4*10).for_each(|chk|{
-		for i in chk.iter_mut(){
-		    *i=255;
-		}
-		chk[4*9+0] = 0; chk[4*9+1] = 0; chk[4*9+2] = 0;
-	    });
-	});
+	let transmuted:&[u8] = unsafe{ std::mem::transmute(&tex_arr[0..]) };
+	 _=tex.update(None, transmuted, 
+	 	     tex_w * std::mem::size_of::<Color>());
+	
+	
+	// _=tex.with_lock(None, |data: &mut [u8], pitch: usize|{
+	//     data.chunks_mut(4*10).for_each(|chk|{
+	// 	for i in chk.iter_mut(){
+	// 	    *i=255;
+	// 	}
+	// 	chk[4*9+0] = 0; chk[4*9+1] = 0; chk[4*9+2] = 0;
+	//     });
+	// });
 	
 	cnv.set_draw_color(bg_col);
         cnv.clear();
