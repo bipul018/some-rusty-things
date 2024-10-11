@@ -1,6 +1,5 @@
 extern crate sdl2;
 extern crate glam;
-extern crate running_average;
 use glam::{Vec2, Vec3, Mat4};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::event::Event;
@@ -12,9 +11,13 @@ use sdl2::rect::FRect;
 // Import the model generation macros
 mod generators;
 
+
 // Import all the transformations things
 mod transformations;
 use transformations::*;
+
+// Import moving average macro thing
+mod movavg;
 
 #[allow(unused_mut)]
 #[allow(unreachable_code)]
@@ -112,18 +115,15 @@ pub fn main() {
     //let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
     let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(0.0,0.0,0.0));
 
-    let mut time_window = running_average::RealTimeRunningAverage::default();
+    MakeMovAvg!{MovAvg, f64, 60}
+    // used for calculating ms of rendering by pixels
+    let mut pix_rndr_time = MovAvg::init(0.0);
 
-    // Draw on a custom surface first
-    
-    // let surface = match sdl2::surface::Surface::new(100, 100,
-    // 						    sdl2::pixels::PixelFormatEnum::RGB24){
-    // 	Ok(ok) => ok,
-    // 	Err(err) => {
-    // 	    println!("Error occured in creating new surface : {}", err);
-    // 	    return;
-    // 	}
-    // };
+    // used for calculating ms of rendering by sdl
+    let mut sdl_rndr_time = MovAvg::init(0.0);
+    // used for overall rendering
+    let mut all_rndr_time = MovAvg::init(0.0);
+
     let tex_crtr = cnv.texture_creator();
     const tex_w:usize = 320; const tex_h:usize = 180;
     let mut tex = match tex_crtr.create_texture_streaming(sdl2::pixels::PixelFormatEnum::ABGR8888,tex_w as u32,tex_h as u32){
@@ -239,95 +239,99 @@ pub fn main() {
 	    
         }
 
-	ball_pos = ball_pos + ball_vel;
-	ball_vel = ball_vel + ball_acc;
+	//Update portion
+	{
+	    ball_pos = ball_pos + ball_vel;
+	    ball_vel = ball_vel + ball_acc;
 
-	// let win_size = Vec2::new(cnv.window().drawable_size().0 as f32,
-	// 			 cnv.window().drawable_size().1 as f32);
-	let win_size = Vec2::new(5.0, 5.0);
-	
-	if ball_pos.y >= win_size.y{
-	    ball_pos.y = win_size.y - (ball_pos.y - win_size.y);
-	    ball_vel.y = -ball_vel.y;
-	}
-
-	
-
-	let mut tex_pixel = |x:usize,y:usize, pix:Option<Color>|{
-	    let prev_pix = tex_arr[y*tex_w+x];
-	    if let Some(p)=pix{
-		tex_arr[y*tex_w+x] = p;
-	    }
-	    prev_pix
-	};
-	for x in 0..tex_w{
-	    for y in 0..tex_h{
-		_=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
+	    // let win_size = Vec2::new(cnv.window().drawable_size().0 as f32,
+	    // 			 cnv.window().drawable_size().1 as f32);
+	    let win_size = Vec2::new(5.0, 5.0);
+	    
+	    if ball_pos.y >= win_size.y{
+		ball_pos.y = win_size.y - (ball_pos.y - win_size.y);
+		ball_vel.y = -ball_vel.y;
 	    }
 	}
 
-	//Draw into texture
-	let transmuted:&[u8] = unsafe{ std::mem::transmute(&tex_arr[0..]) };
-	 _=tex.update(None, transmuted, 
-	 	     tex_w * std::mem::size_of::<Color>());
+	let all_rndr_timer = std::time::Instant::now();
 	
-	
-	// _=tex.with_lock(None, |data: &mut [u8], pitch: usize|{
-	//     data.chunks_mut(4*10).for_each(|chk|{
-	// 	for i in chk.iter_mut(){
-	// 	    *i=255;
-	// 	}
-	// 	chk[4*9+0] = 0; chk[4*9+1] = 0; chk[4*9+2] = 0;
-	//     });
-	// });
-	
+	// Render pixel by pixel portion
+	{
+	    let pix_rndr_timer = std::time::Instant::now();
+	    
+	    let mut tex_pixel = |x:usize,y:usize, pix:Option<Color>|{
+		let prev_pix = tex_arr[y*tex_w+x];
+		if let Some(p)=pix{
+		    tex_arr[y*tex_w+x] = p;
+		}
+		prev_pix
+	    };
+	    for x in 0..tex_w{
+		for y in 0..tex_h{
+		    _=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
+		}
+	    }
+
+	    //Draw into texture
+	    let transmuted:&[u8] = unsafe{ std::mem::transmute(&tex_arr[0..]) };
+	    _=tex.update(None, transmuted, 
+	 		 tex_w * std::mem::size_of::<Color>());
+
+	    pix_rndr_time.insert(pix_rndr_timer.elapsed().as_millis() as f64);
+	}
+
 	cnv.set_draw_color(bg_col);
         cnv.clear();
 
-	//Time draw
-	let now = std::time::Instant::now();
 	
-	_=fill_circle(&cnv, cam2d.lookpt(&cnv, ball_pos), 30.0, Color::RGB(0,0,255));
-	_=fill_circle(&cnv, cam2d.lookpt(&cnv, ball2_pos), 30.0, Color::RGB(255,0,0));
-
-	let pts: Vec<Vec2> = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]]
-	    .iter().map(|&v| Vec2::from_array(v)).collect();
-	let inxs: Vec<u16> = [0, 1, 2, 2, 3, 0].iter().map(|x| *x as u16).collect();
-
-	_=draw_triangles(&cnv, &cam2d, &pts, &inxs, Color::RGB(0,255,0), false);
-	_=draw_triangles(&cnv, &cam2d, &pts, &inxs, Color::RGB(0,0,0), true);
+	// Render using sdl portion
+	{
+	    let sdl_rndr_timer = std::time::Instant::now();
 	    
-			      
-	let (cir_pts, cir_inx) = generate_circle2d!(10, 1.2, Vec2::new(-3.0,0.0));
-	
-	_=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
-			 Color::RGB(255,255,255), false);
-	_=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
-			 Color::RGB(0,0,0), true);
+	    _=fill_circle(&cnv, cam2d.lookpt(&cnv, ball_pos), 30.0, Color::RGB(0,0,255));
+	    _=fill_circle(&cnv, cam2d.lookpt(&cnv, ball2_pos), 30.0, Color::RGB(255,0,0));
 
-	let cam_proj = cam3d.mat();
-	let cir3d_proj = cir3d_pts.map(|pt3d|{
-	    cam_proj.project_point3(model_trns.mat().transform_point3(pt3d)).truncate()
-	});
-	_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
-			 Color::RGB(255,255,0), false);
-	_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
-			 Color::RGB(0,0,0), true);
-	
+	    let pts: Vec<Vec2> = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]]
+		.iter().map(|&v| Vec2::from_array(v)).collect();
+	    let inxs: Vec<u16> = [0, 1, 2, 2, 3, 0].iter().map(|x| *x as u16).collect();
 
-	let elapsed = now.elapsed();
-	time_window.insert(elapsed.as_millis() as f64);
+	    _=draw_triangles(&cnv, &cam2d, &pts, &inxs, Color::RGB(0,255,0), false);
+	    _=draw_triangles(&cnv, &cam2d, &pts, &inxs, Color::RGB(0,0,0), true);
+	    
+	    
+	    let (cir_pts, cir_inx) = generate_circle2d!(10, 1.2, Vec2::new(-3.0,0.0));
+	    
+	    _=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
+			     Color::RGB(255,255,255), false);
+	    _=draw_triangles(&cnv, &cam2d, &cir_pts, &cir_inx,
+			     Color::RGB(0,0,0), true);
 
+	    let cam_proj = cam3d.mat();
+	    let cir3d_proj = cir3d_pts.map(|pt3d|{
+		cam_proj.project_point3(model_trns.mat().transform_point3(pt3d)).truncate()
+	    });
+	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
+			     Color::RGB(255,255,0), false);
+	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
+			     Color::RGB(0,0,0), true);
+	    
+	    sdl_rndr_time.insert(sdl_rndr_timer.elapsed().as_millis() as f64);
+	}
+
+	all_rndr_time.insert(all_rndr_timer.elapsed().as_millis() as f64);
 	
+	// Draw data from texture
 	_=cnv.copy_f(&tex, None, tex_dst);
 
+	_=cnv.string(10,10,&format!("Pixel Rendering Time : {:.2}", pix_rndr_time.get()), Color::RGB(0,0,0));
+	_=cnv.string(10,20,&format!("SDL Rendering TIme : {:.2}", sdl_rndr_time.get()), Color::RGB(0,0,0));
+	_=cnv.string(10,30,&format!("Overall Rendering Time : {:.2}",all_rndr_time.get()), Color::RGB(0,0,0));
 
-
-	
         cnv.present();
     }
 
-    println!("The average time over past few frames is {}", time_window.measurement());
+
 }
 
 // Make a function that renders triangles from mesh according to a given camera
