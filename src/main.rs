@@ -109,6 +109,7 @@ pub fn main() {
 			  Vec3::new(0.0, 0.0, -1.0)).inverse());
 
     let mut model_trns = Transform3D::init();
+    let model_color = Color::RGB(255,255,0);
 
     //Models used
     //let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
@@ -140,45 +141,45 @@ pub fn main() {
 
     let mut tex_arr = [Color::RGBA(255,0,0,255);TEX_W*TEX_H];
 
-    {
+    // This part used for debugging whether ray was casted properly
+    // {
+    // 	let eye = Vec3::new(0.0, 20.0, 0.0);
+    // 	let center = Vec3::new(0.0, 0.0, 0.0);	    
+    // 	let up = Vec3::new(0.0, 0.0, -1.0);
+    // 	let atmat = Mat4::look_at_lh(eye, center, up);
+    // 	let atinv = atmat.inverse();
+
+    // 	println!("Transforming eye by atinv {}", atinv.transform_point3(eye));
+    // 	println!("Transforming center by atinv {}", atinv.transform_point3(center));
+    // 	println!("Transforming up by atinv {}", atinv.transform_vector3(up));
+
+    // 	println!("Transforming origin by atmat {}", atmat.transform_point3(Vec3::ZERO));
+
+    // 	println!("Transforming eye, center by atmat {} {}",
+    // 		 atmat.transform_point3(eye),
+    // 		 atmat.transform_point3(center));
 	
-	let eye = Vec3::new(0.0, 20.0, 0.0);
-	let center = Vec3::new(0.0, 0.0, 0.0);	    
-	let up = Vec3::new(0.0, 0.0, -1.0);
-	let atmat = Mat4::look_at_lh(eye, center, up);
-	let atinv = atmat.inverse();
+    // 	let (x,y)=(TEX_W as f32 / 2.0, TEX_H as f32 / 2.0);
+    // 	//let (x,y)=(0.0,0.0);
+    // 	let mmat = model_trns.mat().inverse();
+    // 	let c2dmat = cam2d.matrix(TEX_W, TEX_H).inverse();
+    // 	let normpos = c2dmat.transform_point2(Vec2::new(x as f32, y as f32));
 
-	println!("Transforming eye by atinv {}", atinv.transform_point3(eye));
-	println!("Transforming center by atinv {}", atinv.transform_point3(center));
-	println!("Transforming up by atinv {}", atinv.transform_vector3(up));
-
-	println!("Transforming origin by atmat {}", atmat.transform_point3(Vec3::ZERO));
-
-	println!("Transforming eye, center by atmat {} {}",
-		 atmat.transform_point3(eye),
-		 atmat.transform_point3(center));
+    // 	let (p,v) = cam3d.get_ray(normpos);
+    // 	let (p2,v2) = (mmat.transform_point3(p), mmat.transform_vector3(v));
 	
-	let (x,y)=(TEX_W as f32 / 2.0, TEX_H as f32 / 2.0);
-	//let (x,y)=(0.0,0.0);
-	let mmat = model_trns.mat().inverse();
-	let c2dmat = cam2d.matrix(TEX_W, TEX_H).inverse();
-	let normpos = c2dmat.transform_point2(Vec2::new(x as f32, y as f32));
-
-	let (p,v) = cam3d.get_ray(normpos);
-	let (p2,v2) = (mmat.transform_point3(p), mmat.transform_vector3(v));
-	
-	// Now the line is wrt the unit sphere
-	let pt = - v2.dot(p2) / v2.dot(v2);
-	let xpt = pt * v2 + p2;
-	println!("normpos = {}, p2 = {}, v2 = {}, pt = {} xpt = {}", normpos, p2, v2, pt, xpt);
-	println!("p = {}, v = {}", p, v);
-	if xpt.dot(xpt) <= 1.0{
-	    //Check front or back , for now consider pt will work (it will not)
-	    //if pt > 0.0{
-	    println!("sphere hit");
-	    //}
-	}
-    }    
+    // 	// Now the line is wrt the unit sphere
+    // 	let pt = - v2.dot(p2) / v2.dot(v2);
+    // 	let xpt = pt * v2 + p2;
+    // 	println!("normpos = {}, p2 = {}, v2 = {}, pt = {} xpt = {}", normpos, p2, v2, pt, xpt);
+    // 	println!("p = {}, v = {}", p, v);
+    // 	if xpt.dot(xpt) <= 1.0{
+    // 	    //Check front or back , for now consider pt will work (it will not)
+    // 	    //if pt > 0.0{
+    // 	    println!("sphere hit");
+    // 	    //}
+    // 	}
+    // }    
     
     
     let mut control_mode:u16 = 0;
@@ -328,10 +329,11 @@ pub fn main() {
 
 		    let pt = - v2.dot(p2) / v2.dot(v2);
 		    let xpt = pt * v2 + p2;
-		    if xpt.dot(xpt) >= 1.0{
+		    if xpt.dot(xpt) <= 1.0{
 			//Check front or back , for now consider pt will work (it will not)
 			//if pt > 0.0{
-			    col = Color::RGB(255,255,255);
+			//col = Color::RGB(255,255,255);
+			col = model_color;
 			//}
 		    }
 		    
@@ -383,7 +385,7 @@ pub fn main() {
 		cam_proj.project_point3(model_trns.mat().transform_point3(pt3d)).truncate()
 	    });
 	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
-			     Color::RGB(255,255,0), false);
+			     model_color, false);
 	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
 			     Color::RGB(0,0,0), true);
 	    
