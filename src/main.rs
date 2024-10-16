@@ -1,5 +1,6 @@
 extern crate sdl2;
 extern crate glam;
+#[allow(unused_imports)]
 use glam::{Vec2, Vec3, Mat4, Vec4};
 use sdl2::gfx::primitives::DrawRenderer;
 use sdl2::event::Event;
@@ -97,7 +98,7 @@ pub fn main() {
     let ball_acc:Vec2 = Vec2::new(0.0, 0.0);
 
     let mut cam2d = Camera2D::init(Vec2::new(0.0,0.0), 0.0, 10.0);
-    let mut cam3d = Camera3D::init(std::f32::consts::PI/3.0, 9.0/9.0, [0.0, 20.0]);
+    let mut cam3d = Camera3D::init(std::f32::consts::PI/3.0, 9.0/9.0, [10.0,30.0]);
     // cam3d.transform = cam3d.transform
     // 	.translate(Vec3::new(0.0, 10.0, 0.0))
     // 	.scalef(10.0)
@@ -105,7 +106,7 @@ pub fn main() {
     cam3d.transform = Transform3D::from_mat4(
 	&Mat4::look_at_rh(Vec3::new(0.0, 20.0, 0.0),
 			  Vec3::new(0.0, 0.0, 0.0),
-			  Vec3::new(0.0, 0.0, 1.0)).inverse());
+			  Vec3::new(0.0, 0.0, -1.0)).inverse());
 
     let mut model_trns = Transform3D::init();
 
@@ -139,6 +140,47 @@ pub fn main() {
 
     let mut tex_arr = [Color::RGBA(255,0,0,255);TEX_W*TEX_H];
 
+    {
+	
+	let eye = Vec3::new(0.0, 20.0, 0.0);
+	let center = Vec3::new(0.0, 0.0, 0.0);	    
+	let up = Vec3::new(0.0, 0.0, -1.0);
+	let atmat = Mat4::look_at_lh(eye, center, up);
+	let atinv = atmat.inverse();
+
+	println!("Transforming eye by atinv {}", atinv.transform_point3(eye));
+	println!("Transforming center by atinv {}", atinv.transform_point3(center));
+	println!("Transforming up by atinv {}", atinv.transform_vector3(up));
+
+	println!("Transforming origin by atmat {}", atmat.transform_point3(Vec3::ZERO));
+
+	println!("Transforming eye, center by atmat {} {}",
+		 atmat.transform_point3(eye),
+		 atmat.transform_point3(center));
+	
+	let (x,y)=(TEX_W as f32 / 2.0, TEX_H as f32 / 2.0);
+	//let (x,y)=(0.0,0.0);
+	let mmat = model_trns.mat().inverse();
+	let c2dmat = cam2d.matrix(TEX_W, TEX_H).inverse();
+	let normpos = c2dmat.transform_point2(Vec2::new(x as f32, y as f32));
+
+	let (p,v) = cam3d.get_ray(normpos);
+	let (p2,v2) = (mmat.transform_point3(p), mmat.transform_vector3(v));
+	
+	// Now the line is wrt the unit sphere
+	let pt = - v2.dot(p2) / v2.dot(v2);
+	let xpt = pt * v2 + p2;
+	println!("normpos = {}, p2 = {}, v2 = {}, pt = {} xpt = {}", normpos, p2, v2, pt, xpt);
+	println!("p = {}, v = {}", p, v);
+	if xpt.dot(xpt) <= 1.0{
+	    //Check front or back , for now consider pt will work (it will not)
+	    //if pt > 0.0{
+	    println!("sphere hit");
+	    //}
+	}
+    }    
+    
+    
     let mut control_mode:u16 = 0;
     'main_loop: loop {
 	//break;
@@ -265,9 +307,37 @@ pub fn main() {
 		}
 		prev_pix
 	    };
+	    
+	    let mmat = model_trns.mat().inverse();
+	    let c2dmat = cam2d.matrix(TEX_W, TEX_H).inverse();
 	    for x in 0..TEX_W{
 		for y in 0..TEX_H{
-		    _=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
+		    let mut col = Color::RGB(0,0,0);
+		    
+		    //let dims = Vec2::new(TEX_W as f32, TEX_H as f32);
+		    //let cenpos = Vec2::new(x as f32, y as f32) - dims * 0.5;
+
+		    //let normpos = (cenpos / dims) * 2.0;
+		    let normpos = c2dmat.transform_point2(Vec2::new(x as f32, y as f32));
+
+		    let (p,v) = cam3d.get_ray(normpos);
+
+		    let (p2,v2) = (mmat.transform_point3(p), mmat.transform_vector3(v));
+
+		    // Now the line is wrt the unit sphere
+
+		    let pt = - v2.dot(p2) / v2.dot(v2);
+		    let xpt = pt * v2 + p2;
+		    if xpt.dot(xpt) >= 1.0{
+			//Check front or back , for now consider pt will work (it will not)
+			//if pt > 0.0{
+			    col = Color::RGB(255,255,255);
+			//}
+		    }
+		    
+
+		    _=tex_pixel(x,y,Some(col));
+		    //_=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
 		}
 	    }
 
@@ -286,9 +356,12 @@ pub fn main() {
 	// Render using sdl portion
 	{
 	    let sdl_rndr_timer = std::time::Instant::now();
+
+	    let width = cnv.viewport().width() as usize;
+	    let height = cnv.viewport().height() as usize;
 	    
-	    _=fill_circle(&cnv, cam2d.lookpt(&cnv, ball_pos), 30.0, Color::RGB(0,0,255));
-	    _=fill_circle(&cnv, cam2d.lookpt(&cnv, ball2_pos), 30.0, Color::RGB(255,0,0));
+	    _=fill_circle(&cnv, cam2d.lookpt(width, height, ball_pos), 30.0, Color::RGB(0,0,255));
+	    _=fill_circle(&cnv, cam2d.lookpt(width, height, ball2_pos), 30.0, Color::RGB(255,0,0));
 
 	    let pts: Vec<Vec2> = [[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]]
 		.iter().map(|&v| Vec2::from_array(v)).collect();
@@ -340,11 +413,14 @@ fn draw_triangles<T:sdl2::render::RenderTarget>(canvas: &sdl2::render::Canvas<T>
   
     let mut ans:Result<(), String> = Ok(());
     
+    let width = canvas.viewport().width() as usize;
+    let height = canvas.viewport().height() as usize;
+    
     inxs.chunks(3).for_each(|tr|{
 	if (tr.len() == 3) && !ans.is_err(){
-	    let pt1 = cam.lookpt(&canvas, pts[tr[0] as usize]);
-	    let pt2 = cam.lookpt(&canvas, pts[tr[1] as usize]);
-	    let pt3 = cam.lookpt(&canvas, pts[tr[2] as usize]);
+	    let pt1 = cam.lookpt(width, height, pts[tr[0] as usize]);
+	    let pt2 = cam.lookpt(width, height, pts[tr[1] as usize]);
+	    let pt3 = cam.lookpt(width, height, pts[tr[2] as usize]);
 	    // Implement culling
 	    let cross = (pt2 - pt1).perp_dot(pt3 - pt1);
 	    if cross >= 0.0{

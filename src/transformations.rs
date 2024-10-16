@@ -1,4 +1,4 @@
-use glam::{Vec2, Mat3, Vec3, Quat, Mat4};
+use glam::{Vec2, Mat3, Vec3, Quat, Mat4, Vec4};
 
 #[derive(Debug)]
 pub struct Camera3D{
@@ -16,9 +16,29 @@ impl Camera3D{
 	     fov_y_radians, aspect_ratio,
 	     z_near: z_range[0], z_far: z_range[1]}
     }
+    pub fn proj_mat(&self) -> Mat4{
+	let mut matar:[[f32; 4]; 4] = [[0.0_f32; 4]; 4];
+	matar[0][0] = 1.0 / (self.aspect_ratio * (self.fov_y_radians/2.0).tan());
+	matar[1][1] = 1.0 / (self.fov_y_radians/2.0).tan();
+	matar[2][2] = - (self.z_far + self.z_near) / (self.z_far - self.z_near);
+	matar[3][2] = - 2.0 * self.z_far * self.z_near / (self.z_far - self.z_near);
+	matar[2][3] = -1.0;
+	
+	
+	//Mat4::perspective_rh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
+	Mat4::from_cols_array_2d(&matar)
+    }
     pub fn mat(&self) -> Mat4{
-	Mat4::perspective_rh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
-	    * (self.transform.mat().inverse())
+	self.proj_mat() * (self.transform.mat().inverse())
+    }
+    pub fn get_ray(&self, pt:Vec2) -> (Vec3, Vec3) /*Start point, direction */{
+	let p0 = Vec3::new(pt.x, pt.y, self.z_near);
+	let v0 = Vec4::new(pt.x, pt.y, self.z_near - 0.0 /* subtracting eye position z*/,0.0);
+	let cmat = self.transform.mat();
+
+	//(cmat.transform_point3(p0), cmat.transform_vector3(v0))
+	(cmat.transform_point3(p0), (cmat * v0).truncate())
+	//(p0, v0.truncate())
     }
 }
 
@@ -86,7 +106,7 @@ impl Camera2D{
     pub fn init(pos:Vec2, rot:f32, view:f32) -> Camera2D{
 	Camera2D{ pos, rot, view }
     }
-    pub fn matrix<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>) -> Mat3 {
+    pub fn matrix(&self, width:usize, height:usize) -> Mat3 {
 	// To make a camera/projection matrix, we need to
 	// translate to position
 	// rotate by reverse
@@ -94,19 +114,18 @@ impl Camera2D{
 
 	let trmat = Mat3::from_translation(-self.pos);
 	let romat = Mat3::from_angle(-self.rot);
-	let vprt = canvas.viewport();
 	// TODO:: need to find out if need to translate too on viewport not starting at 0,0
 	// need to map view to vprt.width
-	let scmat = Mat3::from_scale(Vec2::new(vprt.width() as f32/(self.view),
-					       vprt.width() as f32/(self.view)));
-	let tr2mat = Mat3::from_translation(Vec2::new(vprt.width() as f32 * 0.5,
-						      vprt.height() as f32 * 0.5));
+	let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view),
+					       width as f32/(self.view)));
+	let tr2mat = Mat3::from_translation(Vec2::new(width as f32 * 0.5,
+						      height as f32 * 0.5));
 	return tr2mat * scmat * romat * trmat;
     }
-    pub fn lookpt<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>, point:Vec2) -> Vec2{
-	self.matrix(canvas).transform_point2(point)
+    pub fn lookpt(&self, width:usize, height:usize, point:Vec2) -> Vec2{
+	self.matrix(width, height).transform_point2(point)
     }
-    pub fn lookvec<T:sdl2::render::RenderTarget>(&self, canvas: &sdl2::render::Canvas<T>, vector:Vec2) -> Vec2{
-	self.matrix(canvas).transform_vector2(vector)
+    pub fn lookvec(&self, width:usize, height:usize, vector:Vec2) -> Vec2{
+	self.matrix(width, height).transform_vector2(vector)
     }
 }
