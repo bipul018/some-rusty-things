@@ -106,6 +106,22 @@ impl Camera2D{
     pub fn init(pos:Vec2, rot:f32, view:f32) -> Camera2D{
 	Camera2D{ pos, rot, view }
     }
+    pub fn cam_mat(&self) -> Mat3{
+	// To make a camera/projection matrix, we need to
+	// translate to position
+	// rotate by reverse
+	// scale so view fits in screen
+
+	let trmat = Mat3::from_translation(-self.pos);
+	let romat = Mat3::from_angle(-self.rot);
+	// TODO:: need to find out if need to translate too on viewport not starting at 0,0
+	// need to map view to vprt.width
+	// let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view),
+	// 				       width as f32/(self.view)));
+	let scmat = Mat3::from_scale(Vec2::new(1.0 /(self.view),
+					       1.0 /(self.view)));
+	scmat * romat * trmat
+    }
     pub fn matrix(&self, width:usize, height:usize) -> Mat3 {
 	// To make a camera/projection matrix, we need to
 	// translate to position
@@ -116,11 +132,14 @@ impl Camera2D{
 	let romat = Mat3::from_angle(-self.rot);
 	// TODO:: need to find out if need to translate too on viewport not starting at 0,0
 	// need to map view to vprt.width
-	let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view),
-					       width as f32/(self.view)));
+	// let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view),
+	// 				       width as f32/(self.view)));
+	let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view * 2.0),
+					       width as f32/(self.view * 2.0)));
 	let tr2mat = Mat3::from_translation(Vec2::new(width as f32 * 0.5,
 						      height as f32 * 0.5));
-	return tr2mat * scmat * romat * trmat;
+	//return tr2mat * scmat * romat * trmat;
+	return ndc_mat(width, height) * self.cam_mat();
     }
     pub fn lookpt(&self, width:usize, height:usize, point:Vec2) -> Vec2{
 	self.matrix(width, height).transform_point2(point)
@@ -128,4 +147,13 @@ impl Camera2D{
     pub fn lookvec(&self, width:usize, height:usize, vector:Vec2) -> Vec2{
 	self.matrix(width, height).transform_vector2(vector)
     }
+}
+
+//Maps from -1,1 to -width/2, width/2
+pub fn ndc_mat(width:usize, height:usize) -> Mat3 {
+    let scmat = Mat3::from_scale(Vec2::new(width as f32/2.0,
+					   width as f32/2.0));
+    let tr2mat = Mat3::from_translation(Vec2::new(width as f32 * 0.5,
+						  height as f32 * 0.5));
+    tr2mat * scmat
 }

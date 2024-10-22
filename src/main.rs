@@ -141,6 +141,28 @@ pub fn main() {
 
     let mut tex_arr = [Color::RGBA(255,0,0,255);TEX_W*TEX_H];
 
+    //Debug 2d camera
+    {
+	let in_pts=[
+	    Vec2::new(0.0,0.0),
+	    Vec2::new(-1.0, -1.0),
+	    Vec2::new(1.0, 1.0),
+	];
+
+	let dims=[
+	    [200, 100],
+	    [150, 300]
+	];
+
+	for v in in_pts.iter(){
+	    for w in dims.iter(){
+		let o = ndc_mat(w[0], w[1]).transform_point2(*v);
+		println!("v = {}, w = {:?}, o = {}", v, w, o);
+	    }
+	}
+	
+    }
+    
     // This part used for debugging whether ray was casted properly
     // {
     // 	let eye = Vec3::new(0.0, 20.0, 0.0);
@@ -362,6 +384,7 @@ pub fn main() {
 	    let width = cnv.viewport().width() as usize;
 	    let height = cnv.viewport().height() as usize;
 	    
+
 	    _=fill_circle(&cnv, cam2d.lookpt(width, height, ball_pos), 30.0, Color::RGB(0,0,255));
 	    _=fill_circle(&cnv, cam2d.lookpt(width, height, ball2_pos), 30.0, Color::RGB(255,0,0));
 
@@ -388,7 +411,48 @@ pub fn main() {
 			     model_color, false);
 	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
 			     Color::RGB(0,0,0), true);
+
 	    
+	    // need to get mouse point, transform it back to 3d near plane,
+	    //      then draw a line from that 3d point to camera
+	    // Or, just draw a sphere at the point??
+	    {
+		let mouse_state: sdl2::mouse::MouseState = event_pump.mouse_state();
+
+		let mpos = Vec2::new(mouse_state.x() as f32, mouse_state.y() as f32);
+		
+		let c2dmat = cam2d.matrix(cnv.viewport().width() as usize,
+					  cnv.viewport().height() as usize).inverse();
+	
+		//let dims = Vec2::new(TEX_W as f32, TEX_H as f32);
+		//let cenpos = Vec2::new(x as f32, y as f32) - dims * 0.5;
+
+		//let normpos = (cenpos / dims) * 2.0;
+		let normpos = c2dmat.transform_point2(mpos);
+
+		let (p,_v) = cam3d.get_ray(normpos);
+
+		let pback3d = cam_proj.project_point3(p);
+		let pback2d = c2dmat.transform_point2(pback3d.truncate());
+		_=cnv.string(10, 280,
+			     &format!("OG mpos = {:.2}, normpos = {:.2}", mpos, normpos),
+			     Color::RGB(0,0,0));
+		_=cnv.string(10, 300,
+			     &format!("3dpos = {:.2}, pback3d = {:.2}", p, pback3d),
+			     Color::RGB(0,0,0));
+		_=cnv.string(10, 320,
+			     &format!("pback2d = {:.2}", pback2d),
+			     Color::RGB(0,0,0));
+
+
+		let sph3d_proj = cir3d_pts.map(|pt3d|{
+		    cam_proj.project_point3(pt3d + p).truncate()
+		});
+		_=draw_triangles(&cnv, &cam2d, &sph3d_proj, &cir3d_inx,
+				 model_color, false);
+		
+		
+	    }
 	    sdl_rndr_time.insert(sdl_rndr_timer.elapsed().as_millis() as f64);
 	}
 
