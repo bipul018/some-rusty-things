@@ -20,9 +20,11 @@ impl Camera3D{
 	let mut matar:[[f32; 4]; 4] = [[0.0_f32; 4]; 4];
 	matar[0][0] = 1.0 / (self.aspect_ratio * (self.fov_y_radians/2.0).tan());
 	matar[1][1] = 1.0 / (self.fov_y_radians/2.0).tan();
-	matar[2][2] = - (self.z_far + self.z_near) / (self.z_far - self.z_near);
-	matar[3][2] = - 2.0 * self.z_far * self.z_near / (self.z_far - self.z_near);
-	matar[2][3] = -1.0;
+	//matar[2][2] = - (self.z_far + self.z_near) / (self.z_far - self.z_near);
+	matar[2][2] = self.z_far / (self.z_far - self.z_near);
+	//matar[3][2] = - 2.0 * self.z_far * self.z_near / (self.z_far - self.z_near);
+	matar[3][2] = - self.z_far * self.z_near / (self.z_far - self.z_near);
+	matar[2][3] = 1.0;
 	
 	
 	//Mat4::perspective_rh(self.fov_y_radians, self.aspect_ratio, self.z_near, self.z_far)
@@ -32,12 +34,14 @@ impl Camera3D{
 	self.proj_mat() * (self.transform.mat().inverse())
     }
     pub fn get_ray(&self, pt:Vec2) -> (Vec3, Vec3) /*Start point, direction */{
-	let p0 = Vec3::new(pt.x, pt.y, self.z_near);
-	let v0 = Vec4::new(pt.x, pt.y, self.z_near - 0.0 /* subtracting eye position z*/,0.0);
+	let ntfov = self.z_near * (0.5*self.fov_y_radians).tan();
+	let p0 = Vec3::new(pt.x * ntfov * self.aspect_ratio, pt.y * ntfov, self.z_near);
+	//let v0 = Vec4::new(pt.x, pt.y, self.z_near - 0.0 /* subtracting eye position z*/,0.0);
+	let v0 = p0; // Normalize later this
 	let cmat = self.transform.mat();
 
 	//(cmat.transform_point3(p0), cmat.transform_vector3(v0))
-	(cmat.transform_point3(p0), (cmat * v0).truncate())
+	(cmat.transform_point3(p0), cmat.transform_vector3(v0))
 	//(p0, v0.truncate())
     }
 }
