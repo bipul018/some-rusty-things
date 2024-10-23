@@ -1,6 +1,6 @@
 use glam::{Vec2, Mat3, Vec3, Quat, Mat4, Vec4};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Camera3D{
     pub transform: Transform3D,
     pub fov_y_radians: f32,
@@ -17,6 +17,13 @@ impl Camera3D{
 	     z_near: z_range[0], z_far: z_range[1]}
     }
     pub fn proj_mat(&self) -> Mat4{
+	// This is an implementation of right handed (the normal way) of perspective projection
+	// Here, assumption is that x is along right, y along down, then z along inside of screen
+	// So z_near and z_far are treated to be +ve
+	// Then they are transformed into 0 to 1 depth range
+	// The main thing here is that the dimensions of near plane is not initially -1 to 1
+	// They are determined by aspect ratio, fov and distance of the near plane
+	// So when later casting ray, need to re-scale the -1 to 1 distance obtained
 	let mut matar:[[f32; 4]; 4] = [[0.0_f32; 4]; 4];
 	matar[0][0] = 1.0 / (self.aspect_ratio * (self.fov_y_radians/2.0).tan());
 	matar[1][1] = 1.0 / (self.fov_y_radians/2.0).tan();
@@ -33,6 +40,7 @@ impl Camera3D{
     pub fn mat(&self) -> Mat4{
 	self.proj_mat() * (self.transform.mat().inverse())
     }
+    // Takes in the normalized (-1,1) in both axes
     pub fn get_ray(&self, pt:Vec2) -> (Vec3, Vec3) /*Start point, direction */{
 	let ntfov = self.z_near * (0.5*self.fov_y_radians).tan();
 	let p0 = Vec3::new(pt.x * ntfov * self.aspect_ratio, pt.y * ntfov, self.z_near);
@@ -50,7 +58,7 @@ impl Camera3D{
 // Takes in model -> applies model trans -> camera + proj trans -> makes Vec2 arrays
 //       supplies it into 2D triangle drawing
 // Need to do backface culling in 2D triangle drawing part ?? (sad)
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Transform3D{
     pub pos: Vec3,
     pub rotq: Quat, //Need to rotate this by additional quats
@@ -132,16 +140,16 @@ impl Camera2D{
 	// rotate by reverse
 	// scale so view fits in screen
 
-	let trmat = Mat3::from_translation(-self.pos);
-	let romat = Mat3::from_angle(-self.rot);
+	//let trmat = Mat3::from_translation(-self.pos);
+	//let romat = Mat3::from_angle(-self.rot);
 	// TODO:: need to find out if need to translate too on viewport not starting at 0,0
 	// need to map view to vprt.width
 	// let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view),
 	// 				       width as f32/(self.view)));
-	let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view * 2.0),
-					       width as f32/(self.view * 2.0)));
-	let tr2mat = Mat3::from_translation(Vec2::new(width as f32 * 0.5,
-						      height as f32 * 0.5));
+	//let scmat = Mat3::from_scale(Vec2::new(width as f32/(self.view * 2.0),
+	//width as f32/(self.view * 2.0)));
+	//let tr2mat = Mat3::from_translation(Vec2::new(width as f32 * 0.5,
+	//height as f32 * 0.5));
 	//return tr2mat * scmat * romat * trmat;
 	return ndc_mat(width, height) * self.cam_mat();
     }

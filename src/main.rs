@@ -108,9 +108,12 @@ pub fn main() {
 			  Vec3::new(0.0, 0.0, 0.0),
 			  Vec3::new(0.0, 0.0, -1.0)).inverse());
 
-    let mut model_trns = Transform3D::init();
-    let model_color = Color::RGB(255,255,0);
-
+    let mut models_trns = [Transform3D::init(),
+			   Transform3D::init()];
+    let models_color = [Color::RGB(255, 255, 0), Color::RGB(255,0,0)];
+    // let mut model_trns = Transform3D::init();
+    // let model_color = Color::RGB(255,255,0);
+    
     //Models used
     //let (cir3d_pts, cir3d_inx) = generate_circle3d!(10, 1.2, Vec3::new(4.0, 4.0, 1.0));
     let (cir3d_pts, cir3d_inx) = generate_sphere3d!(10, 1.0, Vec3::new(0.0,0.0,0.0));
@@ -204,7 +207,7 @@ pub fn main() {
     // }    
     
     
-    let mut control_mode:u16 = 0;
+    let mut control_mode:usize = 0;
     'main_loop: loop {
 	//break;
         for event in event_pump.poll_iter() {
@@ -264,7 +267,7 @@ pub fn main() {
 			    }
 			},
 			// For 3D model event
-			2 => {
+			2.. => {
 			    /*
 			    AD -> x move, WS -> y move, QE -> z move
 			    right/left ->x rotate, up/down->z rotate, pgup/pgdown-> y rotate
@@ -272,26 +275,26 @@ pub fn main() {
 			    model_trns
 			     */
 			    match key{
-				Keycode::Q => model_trns.pos.z -= 0.1,
-				Keycode::E => model_trns.pos.z += 0.1,
-				Keycode::W => model_trns.pos.y += 0.1,
-				Keycode::S => model_trns.pos.y -= 0.1,
-				Keycode::A => model_trns.pos.x += 0.1,
-				Keycode::D => model_trns.pos.x -= 0.1,
-				Keycode::Z => model_trns.scale /= 1.01,
-				Keycode::C => model_trns.scale *= 1.01,
-				Keycode::Right => model_trns=model_trns.rotatex(0.05),
-				Keycode::Left => model_trns=model_trns.rotatex(-0.05),
-				Keycode::Up => model_trns=model_trns.rotatez(0.05),
-				Keycode::Down => model_trns=model_trns.rotatez(-0.05),
-				Keycode::PageUp => model_trns=model_trns.rotatey(0.05),
-				Keycode::PageDown => model_trns=model_trns.rotatey(-0.05),
+				Keycode::Q => models_trns[control_mode-2].pos.z -= 0.1,
+				Keycode::E => models_trns[control_mode-2].pos.z += 0.1,
+				Keycode::W => models_trns[control_mode-2].pos.y += 0.1,
+				Keycode::S => models_trns[control_mode-2].pos.y -= 0.1,
+				Keycode::A => models_trns[control_mode-2].pos.x += 0.1,
+				Keycode::D => models_trns[control_mode-2].pos.x -= 0.1,
+				Keycode::Z => models_trns[control_mode-2].scale /= 1.01,
+				Keycode::C => models_trns[control_mode-2].scale *= 1.01,
+				Keycode::Right => models_trns[control_mode-2]=models_trns[control_mode-2].rotatex(0.05),
+				Keycode::Left => models_trns[control_mode-2]=models_trns[control_mode-2].rotatex(-0.05),
+				Keycode::Up => models_trns[control_mode-2]=models_trns[control_mode-2].rotatez(0.05),
+				Keycode::Down => models_trns[control_mode-2]=models_trns[control_mode-2].rotatez(-0.05),
+				Keycode::PageUp => models_trns[control_mode-2]=models_trns[control_mode-2].rotatey(0.05),
+				Keycode::PageDown => models_trns[control_mode-2]=models_trns[control_mode-2].rotatey(-0.05),
 
-				Keycode::M => control_mode=0,
+				Keycode::M => control_mode = (control_mode+1)%(2+models_trns.len()),
 				_=>{}
 			    }
 			},
-			_=>{}
+
 		    }
 
 		    
@@ -330,38 +333,38 @@ pub fn main() {
 		}
 		prev_pix
 	    };
-	    
-	    let mmat = model_trns.mat().inverse();
-	    let c2dmat = cam2d.matrix(TEX_W, TEX_H).inverse();
 	    for x in 0..TEX_W{
 		for y in 0..TEX_H{
-		    let mut col = Color::RGB(0,0,0);
-		    
-		    //let dims = Vec2::new(TEX_W as f32, TEX_H as f32);
-		    //let cenpos = Vec2::new(x as f32, y as f32) - dims * 0.5;
+		    _=tex_pixel(x,y,Some(Color::RGB(0,0,0)));
+		}
+	    }
+	    for minx in 0..models_trns.len(){
+		let mmat = models_trns[minx].mat().inverse();
+		let c2dmat = cam2d.matrix(TEX_W, TEX_H).inverse();
+		for x in 0..TEX_W{
+		    for y in 0..TEX_H{
+			//let dims = Vec2::new(TEX_W as f32, TEX_H as f32);
+			//let cenpos = Vec2::new(x as f32, y as f32) - dims * 0.5;
 
-		    //let normpos = (cenpos / dims) * 2.0;
-		    let normpos = c2dmat.transform_point2(Vec2::new(x as f32, y as f32));
+			//let normpos = (cenpos / dims) * 2.0;
+			let normpos = c2dmat.transform_point2(Vec2::new(x as f32, y as f32));
 
-		    let (p,v) = cam3d.get_ray(normpos);
+			let (p,v) = cam3d.get_ray(normpos);
 
-		    let (p2,v2) = (mmat.transform_point3(p), mmat.transform_vector3(v));
+			let (p2,v2) = (mmat.transform_point3(p), mmat.transform_vector3(v));
 
-		    // Now the line is wrt the unit sphere
+			// Now the line is wrt the unit sphere
 
-		    let pt = - v2.dot(p2) / v2.dot(v2);
-		    let xpt = pt * v2 + p2;
-		    if xpt.dot(xpt) <= 1.0{
-			//Check front or back , for now consider pt will work (it will not)
-			//if pt > 0.0{
-			//col = Color::RGB(255,255,255);
-			col = model_color;
-			//}
+			let pt = - v2.dot(p2) / v2.dot(v2);
+			let xpt = pt * v2 + p2;
+			if xpt.dot(xpt) <= 1.0{
+			    //Check front or back , for now consider pt will work (it will not)
+			    //if pt > 0.0{
+			    //col = Color::RGB(255,255,255);
+			    _=tex_pixel(x,y,Some(models_color[minx]));
+			    //}
+			}
 		    }
-		    
-
-		    _=tex_pixel(x,y,Some(col));
-		    //_=tex_pixel(x,y,Some(Color::RGBA(255,0,0,255)));
 		}
 	    }
 
@@ -404,55 +407,18 @@ pub fn main() {
 			     Color::RGB(0,0,0), true);
 
 	    let cam_proj = cam3d.mat();
-	    let cir3d_proj = cir3d_pts.map(|pt3d|{
-		cam_proj.project_point3(model_trns.mat().transform_point3(pt3d)).truncate()
-	    });
-	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
-			     model_color, false);
-	    _=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
-			     Color::RGB(0,0,0), true);
-
-	    
-	    // need to get mouse point, transform it back to 3d near plane,
-	    //      then draw a line from that 3d point to camera
-	    // Or, just draw a sphere at the point??
-	    {
-		let mouse_state: sdl2::mouse::MouseState = event_pump.mouse_state();
-
-		let mpos = Vec2::new(mouse_state.x() as f32, mouse_state.y() as f32);
-		
-		let c2dmat = cam2d.matrix(cnv.viewport().width() as usize,
-					  cnv.viewport().height() as usize).inverse();
-	
-		//let dims = Vec2::new(TEX_W as f32, TEX_H as f32);
-		//let cenpos = Vec2::new(x as f32, y as f32) - dims * 0.5;
-
-		//let normpos = (cenpos / dims) * 2.0;
-		let normpos = c2dmat.transform_point2(mpos);
-
-		let (p,_v) = cam3d.get_ray(normpos);
-
-		let pback3d = cam_proj.project_point3(p);
-		let pback2d = c2dmat.transform_point2(pback3d.truncate());
-		_=cnv.string(10, 280,
-			     &format!("OG mpos = {:.2}, normpos = {:.2}", mpos, normpos),
-			     Color::RGB(0,0,0));
-		_=cnv.string(10, 300,
-			     &format!("3dpos = {:.2}, pback3d = {:.2}", p, pback3d),
-			     Color::RGB(0,0,0));
-		_=cnv.string(10, 320,
-			     &format!("pback2d = {:.2}", pback2d),
-			     Color::RGB(0,0,0));
 
 
-		let sph3d_proj = cir3d_pts.map(|pt3d|{
-		    cam_proj.project_point3(pt3d + p).truncate()
+	    for minx in 0..models_trns.len(){
+		let cir3d_proj = cir3d_pts.map(|pt3d|{
+		    cam_proj.project_point3(models_trns[minx].mat().transform_point3(pt3d)).truncate()
 		});
-		_=draw_triangles(&cnv, &cam2d, &sph3d_proj, &cir3d_inx,
-				 model_color, false);
-		
-		
+		_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
+				 models_color[minx], false);
+		_=draw_triangles(&cnv, &cam2d, &cir3d_proj, &cir3d_inx,
+				 Color::RGB(0,0,0), true);
 	    }
+
 	    sdl_rndr_time.insert(sdl_rndr_timer.elapsed().as_millis() as f64);
 	}
 
